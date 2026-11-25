@@ -1,12 +1,12 @@
 // Venta directa en mostrador (con MODO_COMANDAS se llama "Venta rápida" y puede mandar comandas al cobrar).
 import { CONFIG } from '../config.js';
 import { db } from '../db.js';
-import { sesionAbierta, tasaVigente } from '../services.js';
+import { tasaVigente, calcularTotales } from '../services.js';
 import { estadoTasa } from '../tasa.js';
 import { abrirModalTasa } from './tasaModal.js';
 import { montarCatalogo, carritoHtml, totalesHtml, clienteChipHtml, elegirCliente, pedirNota, pedirGramos } from './components.js';
 import { cobrar } from './pago.js';
-import { esc, on, toast, confirmar } from '../util.js';
+import { esc, on, toast, confirmar, fmtUsd, fmtBs } from '../util.js';
 
 const KEY = 'sistemaVenta_carrito';
 const carrito = JSON.parse(sessionStorage.getItem(KEY) || 'null') || { items: [], clienteId: 1, seq: 0, comandas: true };
@@ -20,6 +20,7 @@ export function render(el, ctx) {
     <div class="pos">
       <section class="card pos-cat" id="cat"></section>
       <section class="card pos-cart">
+        ${ctx.cajaFija() ? '' : `<label class="vender-desde">Vender desde <select id="cajaVenta">${CONFIG.CAJAS.map((c) => `<option ${c === ctx.caja ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`}
         <div id="cli"></div>
         <div class="cart-scroll" id="lines"></div>
         <div id="tots"></div>
@@ -29,6 +30,11 @@ export function render(el, ctx) {
           <button class="btn btn-primary btn-lg grow" id="cobrar">Cobrar <kbd>F2</kbd></button>
         </div>
       </section>
+    </div>
+    <div class="pos-barra">
+      <button class="btn" id="verCarrito">Carrito <b id="pbN"></b></button>
+      <div class="pb-total"><b id="pbTotal"></b><small id="pbBs"></small></div>
+      <button class="btn btn-primary" id="cobrarMovil">Cobrar</button>
     </div>`;
 
   catalogo = montarCatalogo(el.querySelector('#cat'), {
@@ -49,6 +55,12 @@ export function render(el, ctx) {
     el.querySelector('#lines').innerHTML = carritoHtml(carrito.items, { tasa });
     el.querySelector('#tots').innerHTML = totalesHtml(carrito.items, tasa);
     el.querySelector('#cobrar').disabled = !carrito.items.length;
+    // Barra inferior (solo en celular): total y cobrar siempre a la vista
+    const t = calcularTotales(carrito.items, tasa);
+    el.querySelector('#pbN').textContent = carrito.items.length ? `(${carrito.items.length})` : '';
+    el.querySelector('#pbTotal').textContent = fmtUsd(t.totalUsd);
+    el.querySelector('#pbBs').textContent = fmtBs(t.totalBs);
+    el.querySelector('#cobrarMovil').disabled = !carrito.items.length;
   };
   pintar();
 
@@ -79,6 +91,9 @@ export function render(el, ctx) {
     carrito.items = []; carrito.clienteId = 1; guardar(); pintar();
   };
   el.querySelector('#cobrar').onclick = () => iniciarCobro(ctx);
+  el.querySelector('#cobrarMovil').onclick = () => iniciarCobro(ctx);
+  el.querySelector('#verCarrito').onclick = () => el.querySelector('.pos-cart').scrollIntoView({ behavior: 'smooth' });
+  el.querySelector('#cajaVenta')?.addEventListener('change', (e) => ctx.cambiarCaja(e.target.value));
 }
 
 async function iniciarCobro(ctx) {

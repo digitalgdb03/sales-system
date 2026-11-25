@@ -112,11 +112,11 @@ export const CONFIG = {
 
   // Qué ve cada tipo de usuario. Un permiso con el nombre de una pantalla la muestra en el menú.
   //   enCaja: true → al entrar elige su caja y vende desde ella.
-  //   El administrador no vende: ve todas las cajas, las cierra y administra.
+  //   El administrador no tiene caja fija: si vende, elige la caja en la pantalla de venta.
   ROLES: {
     admin: {
       nombre: 'Administrador',
-      permisos: ['caja', 'ventas', 'inventario', 'clientes', 'fiado', 'gastos', 'reportes', 'config', 'cocina',
+      permisos: ['venta', 'mesas', 'caja', 'ventas', 'inventario', 'clientes', 'fiado', 'gastos', 'reportes', 'config', 'cocina',
         'ventas.anular', 'pagos.confirmar', 'clientes.credito', 'inventario.editar', 'fiado.abonar', 'orden.quitarEnviado'],
     },
     cajero: { nombre: 'Cajero', enCaja: true, permisos: ['venta', 'mesas', 'ventas', 'clientes', 'pagos.confirmar'] },

@@ -38,7 +38,10 @@ const CAJA_KEY = 'sistemaVenta_caja';
 const USUARIO_KEY = 'sistemaVenta_usuario';
 const ctx = {
   usuario: null,
-  caja: sessionStorage.getItem(CAJA_KEY) || null, // solo los cajeros trabajan en una caja
+  // Cajero: su caja fija (elegida al entrar). Administrador: la elige al vender.
+  caja: sessionStorage.getItem(CAJA_KEY) || CONFIG.CAJAS[0],
+  cajaFija: () => !!CONFIG.ROLES[ctx.usuario?.rol]?.enCaja,
+  cambiarCaja: (c) => { ctx.caja = c; sessionStorage.setItem(CAJA_KEY, c); renderVista(); },
   puede: (permiso) => (CONFIG.ROLES[ctx.usuario?.rol]?.permisos || []).includes(permiso),
   navegar: (path) => (location.hash = `#/${path}`),
   refrescar: () => renderVista(),
@@ -117,9 +120,9 @@ function renderLogin() {
     const u = db().usuarios.find((x) => x.activo && x.usuario === f.usuario.value.trim().toLowerCase() && x.pin === f.clave.value.trim());
     if (!u) return toast('Usuario o clave incorrectos', 'error');
     ctx.usuario = u;
-    ctx.caja = enCaja() ? f.caja.value : null;
+    ctx.caja = enCaja() ? f.caja.value : sessionStorage.getItem(CAJA_KEY) || CONFIG.CAJAS[0];
     sessionStorage.setItem(USUARIO_KEY, String(u.id));
-    if (ctx.caja) sessionStorage.setItem(CAJA_KEY, ctx.caja); else sessionStorage.removeItem(CAJA_KEY);
+    sessionStorage.setItem(CAJA_KEY, ctx.caja);
     if (location.hash) location.hash = '';
     renderLayout();
     renderVista();
@@ -149,7 +152,7 @@ function renderTopbar() {
         <b>${t ? fmtTasa(t.valor) : '—'}</b><small>Bs/$</small>
       </button>
       <span class="net ${off ? 'off' : ''}">● ${off ? 'Sin internet' : 'En línea'}</span>
-      ${ctx.caja ? `<div class="caja-pill">${esc(ctx.caja)}</div>` : ''}
+      ${ctx.cajaFija() ? `<div class="caja-pill">${esc(ctx.caja)}</div>` : ''}
       <div class="user-chip"><span class="avatar sm">${esc(ctx.usuario.nombre[0])}</span>
         <span><b>${esc(ctx.usuario.nombre)}</b>${ctx.usuario.nombre !== CONFIG.ROLES[ctx.usuario.rol].nombre ? `<small>${esc(CONFIG.ROLES[ctx.usuario.rol].nombre)}</small>` : ''}</span>
         <button class="btn btn-sm" id="salir">Salir</button></div>
