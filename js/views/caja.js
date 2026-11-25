@@ -4,7 +4,7 @@ import { CONFIG } from '../config.js';
 import { db } from '../db.js';
 import { cerrarCaja, sesionAbierta, resumenSesion } from '../services.js';
 import { imprimir, imprimirHtml, textoCierre } from '../printing.js';
-import { esc, on, toast, confirmar, fmtUsd, fmtBs, fmtFechaHora, hoy, sumarDias, fechaLocal, sum, descargar, csv } from '../util.js';
+import { paginar, alPaginar, esc, on, toast, confirmar, fmtUsd, fmtBs, fmtFechaHora, hoy, sumarDias, fechaLocal, sum, descargar, csv } from '../util.js';
 
 const filtro = { desde: sumarDias(hoy(), -7), hasta: hoy(), caja: '' };
 const fmtM = (m, c) => (m.moneda === 'USD' ? fmtUsd(c) : fmtBs(c));
@@ -61,6 +61,12 @@ function renderHistorial(cont) {
   const lista = db().sesiones.filter((s) => s.estado === 'cerrada' && fechaLocal(s.cierre) >= filtro.desde && fechaLocal(s.cierre) <= filtro.hasta
     && (!filtro.caja || s.caja === filtro.caja)).sort((a, b) => b.cierre.localeCompare(a.cierre));
   const tot = Object.fromEntries(CONFIG.METODOS_PAGO.map((m) => [m.id, sum(lista, (s) => s.resumen.esperado[m.id])]));
+  const tabla = (filas) => `<div class="tbl-wrap"><table class="tbl" id="htbl"><thead><tr><th>Cierre</th><th>Caja</th><th class="num">Ventas</th><th class="num">Total $</th><th class="num">Total Bs</th><th></th></tr></thead><tbody>
+      ${filas.map((s) => `<tr><td>${fmtFechaHora(s.cierre)}</td><td>${esc(s.caja)}</td>
+          <td class="num">${s.resumen.nVentas}</td><td class="num">${fmtUsd(s.resumen.totalUsd)}</td><td class="num">${fmtBs(s.resumen.totalBs)}</td>
+          <td class="acts"><button class="btn btn-sm" data-ver="${s.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin cierres en el período</td></tr>'}
+    </tbody></table></div>`;
+  const pag = paginar('cierres', lista, { clave: JSON.stringify(filtro) });
   cont.innerHTML = `
     <div class="row between wrap"><h3>Historial de cierres</h3>
       <div class="row gap wrap">
@@ -71,19 +77,20 @@ function renderHistorial(cont) {
       </div></div>
     <h4>Totales del período por forma de pago</h4>
     <div class="kpis sm">${CONFIG.METODOS_PAGO.map((m) => `<div class="kpi"><small>${esc(m.nombre)}</small><b>${fmtM(m, tot[m.id])}</b></div>`).join('')}</div>
-    <table class="tbl" id="htbl"><thead><tr><th>Cierre</th><th>Caja</th><th class="num">Ventas</th><th class="num">Total $</th><th class="num">Total Bs</th><th></th></tr></thead><tbody>
-      ${lista.map((s) => `<tr><td>${fmtFechaHora(s.cierre)}</td><td>${esc(s.caja)}</td>
-          <td class="num">${s.resumen.nVentas}</td><td class="num">${fmtUsd(s.resumen.totalUsd)}</td><td class="num">${fmtBs(s.resumen.totalBs)}</td>
-          <td class="acts"><button class="btn btn-sm" data-ver="${s.id}">Ver</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin cierres en el período</td></tr>'}
-    </tbody></table>`;
+    ${tabla(pag.items)}${pag.html}`;
+  alPaginar(cont, () => renderHistorial(cont));
   const set = () => { filtro.desde = cont.querySelector('#hd').value; filtro.hasta = cont.querySelector('#hh').value; filtro.caja = cont.querySelector('#hc').value; renderHistorial(cont); };
   cont.querySelector('#hd').onchange = set;
   cont.querySelector('#hh').onchange = set;
   cont.querySelector('#hc').onchange = set;
-  on(cont, 'click', '[data-ver]', (e, b) => {
-    const s = db().sesiones.find((x) => x.id === Number(b.dataset.ver));
-    imprimir({ titulo: `Cierre ${s.caja} · ${fmtFechaHora(s.cierre)}`, tipo: 'cierre', caja: s.caja, texto: textoCierre(s) });
-  });
+  // El contenedor se repinta entero al filtrar o cambiar de página: el evento se conecta una sola vez.
+  if (!cont._verListo) {
+    cont._verListo = true;
+    on(cont, 'click', '[data-ver]', (e, b) => {
+      const s = db().sesiones.find((x) => x.id === Number(b.dataset.ver));
+      imprimir({ titulo: `Cierre ${s.caja} · ${fmtFechaHora(s.cierre)}`, tipo: 'cierre', caja: s.caja, texto: textoCierre(s) });
+    });
+  }
   cont.querySelector('#hcsv').onclick = () => descargar(`cierres_${filtro.desde}_${filtro.hasta}.csv`, csv([
     ['Cierre', 'Caja', 'Ventas', 'Total $', 'Total Bs', ...CONFIG.METODOS_PAGO.map((m) => m.nombre)],
     ...lista.map((s) => [fmtFechaHora(s.cierre), s.caja, s.resumen.nVentas, s.resumen.totalUsd / 100, s.resumen.totalBs / 100,
@@ -91,5 +98,5 @@ function renderHistorial(cont) {
   ]));
   cont.querySelector('#hpdf').onclick = () => imprimirHtml(`Cierres ${filtro.desde} a ${filtro.hasta}`,
     `<h2>Totales por forma de pago</h2><table>${CONFIG.METODOS_PAGO.map((m) => `<tr><td>${esc(m.nombre)}</td><td class="num">${fmtM(m, tot[m.id])}</td></tr>`).join('')}</table>`
-    + cont.querySelector('#htbl').outerHTML.replace(/<button[^>]*>Ver<\/button>/g, ''));
+    + tabla(lista).replace(/<button[^>]*>Ver<\/button>/g, ''));
 }

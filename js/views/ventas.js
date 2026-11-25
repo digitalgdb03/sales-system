@@ -3,7 +3,7 @@ import { CONFIG, metodo } from '../config.js';
 import { db } from '../db.js';
 import { anularVenta, confirmarPago, confirmarPagoAbono } from '../services.js';
 import { imprimir, imprimirHtml, textoVenta } from '../printing.js';
-import { docVenta, esc, on, modal, toast, pedir, fmtUsd, fmtBs, fmtTasa, fmtFechaHora, fmtCant, fmtYmd, hoy, sumarDias, fechaLocal, parseMonto, sum, descargar, csv } from '../util.js';
+import { docVenta, paginar, alPaginar, esc, on, modal, toast, pedir, fmtUsd, fmtBs, fmtTasa, fmtFechaHora, fmtCant, fmtYmd, hoy, sumarDias, fechaLocal, parseMonto, sum, descargar, csv } from '../util.js';
 
 let tab = 'historial';
 const f = { desde: sumarDias(hoy(), -2), hasta: hoy(), cliente: '', vendedor: '', caja: '', metodo: '', moneda: 'USD', min: '', max: '', estado: '' };
@@ -62,28 +62,32 @@ function renderHistorial(cont, ctx) {
       </div>
       <div id="tabla"></div>
     </section>`;
-  const pintar = () => {
-    const lista = filtrar();
+  const kpis = (lista) => {
     const validas = lista.filter((v) => v.estado !== 'anulada');
-    cont.querySelector('#tabla').innerHTML = `
+    return `
       <div class="kpis sm">
         <div class="kpi"><small>Ventas</small><b>${validas.length}</b></div>
         <div class="kpi"><small>Total $</small><b>${fmtUsd(sum(validas, (v) => v.totalUsd))}</b></div>
         <div class="kpi"><small>Total Bs</small><b>${fmtBs(sum(validas, (v) => v.totalBs))}</b></div>
         ${CONFIG.MODO_FISCAL ? `<div class="kpi"><small>IVA $</small><b>${fmtUsd(sum(validas, (v) => v.ivaUsd))}</b></div><div class="kpi"><small>IGTF Bs</small><b>${fmtBs(sum(validas, (v) => v.igtfBs))}</b></div>` : ''}
-      </div>
-      <div class="tbl-wrap"><table class="tbl" id="vtbl"><thead><tr><th>Documento</th><th>Fecha</th><th>Caja</th><th>Vendedor</th><th>Cliente</th>
+      </div>`;
+  };
+  const tabla = (filas) => `<div class="tbl-wrap"><table class="tbl" id="vtbl"><thead><tr><th>Documento</th><th>Fecha</th><th>Caja</th><th>Vendedor</th><th>Cliente</th>
         ${CONFIG.MODO_COMANDAS ? '<th>Mesa</th>' : ''}<th>Pago</th><th class="num">Total $</th><th class="num">Total Bs</th><th class="num">Tasa</th><th></th></tr></thead><tbody>
-        ${lista.slice(0, 300).map((v) => `<tr class="clickable ${v.estado === 'anulada' ? 'anulada' : ''}" data-v="${v.id}">
+        ${filas.map((v) => `<tr class="clickable ${v.estado === 'anulada' ? 'anulada' : ''}" data-v="${v.id}">
           <td><small>${v.doc.tipo === 'FACTURA' ? 'FAC' : 'NE'} ${esc(v.doc.numero)}</small></td><td>${fmtFechaHora(v.fecha)}</td><td>${esc(v.caja)}</td>
           <td>${esc(v.usuario)}</td><td>${esc(v.cliente.nombre)}</td>${CONFIG.MODO_COMANDAS ? `<td>${esc(v.mesa || '—')}</td>` : ''}
           <td>${v.pagos.map((p) => `<span class="tag ${p.estado === 'por_confirmar' ? 'tag-warn' : ''}">${esc(metodo(p.metodo).nombre)}</span>`).join(' ')}</td>
           <td class="num">${fmtUsd(v.totalUsd)}</td><td class="num">${fmtBs(v.totalBs)}</td><td class="num"><small>${fmtTasa(v.tasa.valor)}</small></td>
           <td>${v.estado === 'anulada' ? '<span class="tag tag-err">Anulada</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Sin ventas con esos filtros</td></tr>'}
-      </tbody></table></div>
-      ${lista.length > 300 ? `<p class="muted small">Mostrando 300 de ${lista.length}. Ajuste los filtros o exporte a CSV.</p>` : ''}`;
+      </tbody></table></div>`;
+  const pintar = () => {
+    const lista = filtrar();
+    const pag = paginar('ventas', lista, { clave: JSON.stringify(f) });
+    cont.querySelector('#tabla').innerHTML = kpis(lista) + tabla(pag.items) + pag.html;
   };
   pintar();
+  alPaginar(cont.querySelector('#tabla'), pintar);
   on(cont, 'input', '[data-f]', (e, i) => { f[i.dataset.f] = i.value; pintar(); });
   on(cont, 'change', 'select[data-f], input[type=date]', (e, i) => { f[i.dataset.f] = i.value; pintar(); });
   on(cont, 'click', '[data-v]', (e, tr) => detalleVenta(Number(tr.dataset.v), ctx));
@@ -95,7 +99,7 @@ function renderHistorial(cont, ctx) {
         v.pagos.map((p) => metodo(p.metodo).nombre).join(' + '), v.totalUsd / 100, v.totalBs / 100, v.ivaUsd / 100, v.igtfBs / 100, v.tasa.valor, v.tasa.origen, v.estado]),
     ]));
   };
-  cont.querySelector('#pdf').onclick = () => imprimirHtml(`Ventas ${fmtYmd(f.desde)} a ${fmtYmd(f.hasta)}`, cont.querySelector('#tabla').innerHTML);
+  cont.querySelector('#pdf').onclick = () => imprimirHtml(`Ventas ${fmtYmd(f.desde)} a ${fmtYmd(f.hasta)}`, kpis(filtrar()) + tabla(filtrar()));
 }
 
 export function detalleVenta(id, ctx) {

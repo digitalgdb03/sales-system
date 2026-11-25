@@ -2,7 +2,7 @@ import { CONFIG } from '../config.js';
 import { db } from '../db.js';
 import { guardarProducto, entradaStock, eliminarProducto, tasaVigente } from '../services.js';
 import { imprimirHtml } from '../printing.js';
-import { esc, on, toast, pedir, confirmar, fmtUsd, fmtBs, fmtCant, usdABs, parseMonto, parseDecimal, centsToInput, sumarDias, hoy, sum, descargar, csv } from '../util.js';
+import { paginar, alPaginar, esc, on, toast, pedir, confirmar, fmtUsd, fmtBs, fmtCant, usdABs, parseMonto, parseDecimal, centsToInput, sumarDias, hoy, sum, descargar, csv } from '../util.js';
 
 const f = { q: '', cat: '', bajo: false };
 
@@ -20,7 +20,7 @@ export function render(el, ctx) {
       </div>
       <div id="tabla"></div>
     </section>`;
-  const pintar = () => {
+  const datos = () => {
     const tasa = tasaVigente()?.valor || 0;
     const desde = new Date(`${sumarDias(hoy(), -7)}T00:00:00`).toISOString();
     const vendidos = {};
@@ -28,12 +28,11 @@ export function render(el, ctx) {
     const q = f.q.toLowerCase();
     const lista = db().productos.filter((p) => (!q || p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q))
       && (!f.cat || p.categoria === f.cat) && (!f.bajo || (p.controlStock && p.stock <= p.stockMin)));
-    const bajos = db().productos.filter((p) => p.activo && p.controlStock && p.stock <= p.stockMin).length;
-    el.querySelector('#tabla').innerHTML = `
-      ${bajos ? `<div class="banner banner-warn">${bajos} producto(s) con stock bajo o agotado.</div>` : ''}
-      <div class="tbl-wrap"><table class="tbl" id="itbl"><thead><tr><th>Código</th><th>Producto</th><th>Categoría</th>${CONFIG.MODO_COMANDAS ? '<th>Área</th>' : ''}
+    return { tasa, vendidos, lista };
+  };
+  const tabla = (filas, { tasa, vendidos }) => `<div class="tbl-wrap"><table class="tbl" id="itbl"><thead><tr><th>Código</th><th>Producto</th><th>Categoría</th>${CONFIG.MODO_COMANDAS ? '<th>Área</th>' : ''}
         <th class="num">Precio $</th><th class="num">Precio Bs</th><th class="num">Stock</th><th class="num">Vendidos 7 días</th><th></th></tr></thead><tbody>
-      ${lista.map((p) => {
+      ${filas.map((p) => {
         const bajo = p.controlStock && p.stock <= p.stockMin;
         return `<tr class="${p.activo ? '' : 'inactivo'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b>${p.activo ? '' : ' <span class="tag">inactivo</span>'}</td>
           <td>${esc(p.categoria)}</td>${CONFIG.MODO_COMANDAS ? `<td>${p.area ? esc(CONFIG.AREAS[p.area]) : '—'}</td>` : ''}
@@ -44,10 +43,17 @@ export function render(el, ctx) {
             ${p.controlStock ? `<button class="btn btn-sm" data-stock="${p.id}">+ Stock</button>` : ''}
             <button class="btn-icon" data-del="${p.id}" title="Eliminar">🗑</button>` : ''}</td></tr>`;
       }).join('') || '<tr><td colspan="9" class="empty">Sin productos</td></tr>'}
-      </tbody></table></div>
+      </tbody></table></div>`;
+  const pintar = () => {
+    const d = datos();
+    const bajos = db().productos.filter((p) => p.activo && p.controlStock && p.stock <= p.stockMin).length;
+    const pag = paginar('inventario', d.lista, { clave: JSON.stringify(f) });
+    el.querySelector('#tabla').innerHTML = `${bajos ? `<div class="banner banner-warn">${bajos} producto(s) con stock bajo o agotado.</div>` : ''}
+      ${tabla(pag.items, d)}${pag.html}
       <p class="muted small">Los precios se guardan en dólares; el precio en Bs se calcula con la tasa vigente.</p>`;
   };
   pintar();
+  alPaginar(el.querySelector('#tabla'), pintar);
   el.querySelector('#q').oninput = (e) => { f.q = e.target.value; pintar(); };
   el.querySelector('#cat').onchange = (e) => { f.cat = e.target.value; pintar(); };
   el.querySelector('#bajo').onchange = (e) => { f.bajo = e.target.checked; pintar(); };
@@ -70,7 +76,7 @@ export function render(el, ctx) {
     ['Código', 'Producto', 'Categoría', 'Área', 'Unidad', 'Precio $', 'Controla stock', 'Stock', 'Stock mínimo', 'Activo'],
     ...db().productos.map((p) => [p.codigo, p.nombre, p.categoria, p.area || '', p.unidad, p.precioUsd / 100, p.controlStock ? 'Sí' : 'No', p.stock, p.stockMin, p.activo ? 'Sí' : 'No']),
   ]));
-  el.querySelector('#pdf').onclick = () => imprimirHtml('Inventario', el.querySelector('#itbl').outerHTML.replace(/<td class="acts">[\s\S]*?<\/td>/g, '<td></td>'));
+  el.querySelector('#pdf').onclick = () => imprimirHtml('Inventario', tabla(datos().lista, datos()).replace(/<td class="acts">[\s\S]*?<\/td>/g, '<td></td>'));
 }
 
 async function formProducto(p = null) {

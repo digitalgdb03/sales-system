@@ -373,3 +373,13 @@ label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; co
 .brand b { font-size: 16px; }
 .vender-desde { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
 .vender-desde select { padding: 5px 8px; font-weight: 600; color: var(--ink); }
+
+/* ---------- Paginación ---------- */
+.paginador { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 2px 2px; font-size: 13px; }
+.pag-btns { display: flex; align-items: center; gap: 4px; }
+.pag-btn { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--line); background: #fff; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--ink); }
+.pag-btn:hover:not(:disabled):not(.on) { border-color: var(--primary); color: var(--primary); }
+.pag-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pag-btn:disabled { opacity: .4; cursor: default; }
+.pag-gap { color: var(--muted); padding: 0 2px; }
+@media (max-width: 700px) { .paginador { justify-content: center; } }

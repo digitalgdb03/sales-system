@@ -250,6 +250,49 @@ export function pedir({ titulo, campos, textoOk = 'Guardar', ancho = 520, valida
   });
 }
 
+// ---------- Paginación de tablas ----------
+// paginar('ventas', lista, { clave }) → { items, html }. Si cambia la `clave` (p. ej. los filtros) vuelve a la página 1.
+const paginas = {};
+export const POR_PAGINA = 10;
+export function paginar(id, lista, { clave = '', porPagina = POR_PAGINA } = {}) {
+  const est = (paginas[id] ||= { p: 1, clave });
+  if (est.clave !== clave) { est.p = 1; est.clave = clave; }
+  const total = lista.length;
+  const nPag = Math.max(1, Math.ceil(total / porPagina));
+  est.p = Math.min(Math.max(1, est.p), nPag);
+  const desde = (est.p - 1) * porPagina;
+  const items = lista.slice(desde, desde + porPagina);
+  if (total <= porPagina) return { items, html: '' };
+  // Números visibles: primera, última y las cercanas a la actual
+  const nums = [...new Set([1, est.p - 1, est.p, est.p + 1, nPag])].filter((n) => n >= 1 && n <= nPag).sort((a, b) => a - b);
+  let botones = '';
+  nums.forEach((n, i) => {
+    if (i && n - nums[i - 1] > 1) botones += '<span class="pag-gap">…</span>';
+    botones += `<button class="pag-btn ${n === est.p ? 'on' : ''}" data-pag-id="${id}" data-pag="${n}">${n}</button>`;
+  });
+  const html = `<div class="paginador">
+    <span class="muted">${desde + 1}–${desde + items.length} de ${total}</span>
+    <div class="pag-btns">
+      <button class="pag-btn" data-pag-id="${id}" data-pag="${est.p - 1}" ${est.p === 1 ? 'disabled' : ''} title="Anterior">‹</button>
+      ${botones}
+      <button class="pag-btn" data-pag-id="${id}" data-pag="${est.p + 1}" ${est.p === nPag ? 'disabled' : ''} title="Siguiente">›</button>
+    </div></div>`;
+  return { items, html };
+}
+// Conecta los botones del paginador de `cont` (se puede llamar en cada repintado sin duplicar eventos).
+export function alPaginar(cont, repintar) {
+  cont._repintarPagina = repintar;
+  if (cont._paginadorListo) return;
+  cont._paginadorListo = true;
+  cont.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pag]');
+    if (!b || b.disabled || !cont.contains(b)) return;
+    e.stopPropagation();
+    paginas[b.dataset.pagId].p = Number(b.dataset.pag);
+    cont._repintarPagina();
+  });
+}
+
 export function descargar(nombre, contenido, tipo = 'text/csv;charset=utf-8') {
   const blob = new Blob(['﻿' + contenido], { type: tipo });
   const a = document.createElement('a');
